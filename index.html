@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Link Watch — link tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0e14;
+    --panel: #10151f;
+    --line: #1e2530;
+    --text: #e6eaf0;
+    --muted: #7c8798;
+    --blue: #3b82f6;
+    --cyan: #06b6d4;
+    --warn: #f0b429;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif; line-height:1.5;
+  }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  header{
+    padding:28px 24px 20px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  }
+  header h1{ margin:0; font-size:19px; font-weight:600; }
+  header h1 span{
+    background:linear-gradient(120deg, var(--blue), var(--cyan));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  #status{ font-size:13px; color:var(--muted); }
+  #status.live::before{ content:"●"; color:#3ddc84; margin-right:6px; }
+  #status.off::before{ content:"●"; color:#4a5261; margin-right:6px; }
+  main{ max-width:760px; margin:0 auto; padding:24px 20px 80px; }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:20px; margin-bottom:18px;
+  }
+  .panel h2{ margin:0 0 4px; font-size:15px; font-weight:600; }
+  .panel p.hint{ margin:0 0 16px; font-size:13px; color:var(--muted); }
+  label{ display:block; font-size:12.5px; color:var(--muted); margin:14px 0 6px; }
+  label:first-of-type{ margin-top:0; }
+  input, textarea{
+    width:100%; background:#0d1219; border:1px solid var(--line); border-radius:7px;
+    color:var(--text); padding:9px 11px; font-size:13.5px; font-family:'IBM Plex Mono',monospace;
+  }
+  textarea{ min-height:88px; resize:vertical; }
+  input:focus, textarea:focus{ outline:none; border-color:var(--blue); }
+  .row{ display:flex; gap:10px; }
+  .row > *{ flex:1; }
+  button{
+    font-family:inherit; font-size:13.5px; font-weight:500; cursor:pointer;
+    border-radius:7px; padding:10px 16px; border:1px solid transparent;
+  }
+  .btn-primary{ background:var(--blue); color:#fff; }
+  .btn-primary:hover{ background:#2f6fe0; }
+  .btn-ghost{ background:transparent; border-color:var(--line); color:var(--text); }
+  .btn-ghost:hover{ border-color:var(--blue); }
+  .actions{ display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  #setupMsg{ font-size:13px; margin-top:12px; }
+  #setupMsg.err{ color:#f26d6d; }
+  #setupMsg.ok{ color:#3ddc84; }
+
+  #dashboard{ display:none; }
+  .periods{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; }
+  .periods button{
+    background:var(--panel); border:1px solid var(--line); color:var(--muted); padding:7px 13px;
+  }
+  .periods button.active{ color:#fff; border-color:var(--blue); background:rgba(59,130,246,.12); }
+
+  .stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:18px; }
+  .stat{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .stat .num{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:500; }
+  .stat .label{ font-size:12.5px; color:var(--muted); margin-top:4px; }
+  .stat.total .num{ color:var(--text); }
+  .stat.unique .num{ color:var(--cyan); }
+  .stat.repeated .num{ color:var(--warn); }
+
+  .list-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+  .filters{ display:flex; gap:6px; }
+  .filters button{ background:transparent; border:1px solid var(--line); color:var(--muted); padding:6px 12px; font-size:12.5px; }
+  .filters button.active{ color:var(--text); border-color:var(--text); }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; color:var(--muted); font-weight:500; font-size:12px; padding:8px 6px; border-bottom:1px solid var(--line); }
+  td{ padding:9px 6px; border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; }
+  td.url{ word-break:break-all; }
+  td.count{ text-align:right; color:var(--muted); }
+  tr:last-child td{ border-bottom:none; }
+  .empty{ color:var(--muted); font-size:13px; padding:20px 0; text-align:center; }
+  .list-actions{ margin-top:14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Link<span>Watch</span></h1>
+  <span id="status" class="off">not connected</span>
+</header>
+
+<main>
+
+  <div class="panel" id="setupPanel">
+    <h2>Connect your channel</h2>
+    <p class="hint">Paste your bot token, the channel it's admin of, and your Neon database connection string. The connection string is sent straight to a server-side function and stored there — it never stays in this page or your browser.</p>
+
+    <label>Bot token (from @BotFather)</label>
+    <input id="botToken" type="password" placeholder="123456:AA...">
+
+    <label>Channel (@username, or the -100... chat ID for a private channel)</label>
+    <input id="channelId" placeholder="@your_logs_channel">
+
+    <label>Neon database connection string</label>
+    <input id="dbUrl" type="password" placeholder="postgresql://user:pass@host/dbname?sslmode=require">
+
+    <div class="actions">
+      <button class="btn-primary" id="connectBtn">Connect webhook &amp; open dashboard</button>
+      <button class="btn-ghost" id="disconnectBtn" style="display:none;">Disconnect</button>
+    </div>
+    <div id="setupMsg"></div>
+  </div>
+
+  <div id="dashboard">
+    <div class="periods">
+      <button data-p="1h">1 hour</button>
+      <button data-p="12h">12 hours</button>
+      <button data-p="1d" class="active">1 day</button>
+      <button data-p="7d">7 days</button>
+      <button data-p="1m">1 month</button>
+      <button data-p="1y">1 year</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat total"><div class="num" id="statTotal">–</div><div class="label">messages with links</div></div>
+      <div class="stat unique"><div class="num" id="statUnique">–</div><div class="label">unique links</div></div>
+      <div class="stat repeated"><div class="num" id="statRepeated">–</div><div class="label">repeated links</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="list-head">
+        <h2 style="margin:0;">Links</h2>
+        <div class="filters">
+          <button data-f="all" class="active">all</button>
+          <button data-f="unique">unique</button>
+          <button data-f="repeated">repeated</button>
+        </div>
+      </div>
+      <div id="linkTableWrap"></div>
+      <div class="list-actions">
+        <button class="btn-ghost" id="exportBtn">Export list (.txt)</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+let currentPeriod = "1d";
+let currentFilter = "all";
+let currentRows = []; // [[url,count], ...]
+
+const $ = (id) => document.getElementById(id);
+
+function setStatus(live){
+  const el = $("status");
+  el.className = live ? "live" : "off";
+  el.textContent = live ? "connected — logging live" : "not connected";
+}
+
+function loadSaved(){
+  const raw = localStorage.getItem("linkwatch_config");
+  if(!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function save(cfg){
+  localStorage.setItem("linkwatch_config", JSON.stringify(cfg));
+}
+
+async function connect(){
+  const msg = $("setupMsg");
+  msg.className = ""; msg.textContent = "";
+
+  const botToken = $("botToken").value.trim();
+  const channelId = $("channelId").value.trim();
+  const dbUrl = $("dbUrl").value.trim();
+  if(!botToken || !channelId || !dbUrl){
+    msg.className = "err"; msg.textContent = "Bot token, channel, and database connection string are all required.";
+    return;
+  }
+
+  const secret = crypto.randomUUID().replace(/-/g, "");
+  const webhookUrl = `${window.location.origin}/.netlify/functions/telegram-webhook`;
+
+  msg.textContent = "Registering webhook with Telegram…";
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&secret_token=${secret}&allowed_updates=["channel_post"]`);
+    const data = await res.json();
+    if(!data.ok){
+      msg.className = "err";
+      msg.textContent = "Telegram rejected the webhook: " + (data.description || "unknown error");
+      return;
+    }
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "Couldn't reach Telegram: " + e.message;
+    return;
+  }
+
+  msg.textContent = "Saving database config…";
+  try {
+    const res = await fetch("/.netlify/functions/save-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ databaseUrl: dbUrl, webhookSecret: secret }),
+    });
+    if(!res.ok){
+      msg.className = "err"; msg.textContent = "Webhook registered, but saving the DB config failed. Check the function logs on Netlify.";
+      return;
+    }
+  } catch (e) {
+    msg.className = "err"; msg.textContent = "Webhook registered, but couldn't reach the save-config function: " + e.message;
+    return;
+  }
+
+  // Only the token/channel are kept locally, for re-filling this form — the DB string and secret live server-side only.
+  save({ botToken, channelId });
+
+  msg.className = "ok";
+  msg.textContent = "Connected. Data will start showing up once new messages come into the channel.";
+
+  showDashboard();
+}
+
+function disconnect(){
+  localStorage.removeItem("linkwatch_config");
+  $("botToken").value = ""; $("channelId").value = ""; $("dbUrl").value = "";
+  $("dashboard").style.display = "none";
+  $("disconnectBtn").style.display = "none";
+  setStatus(false);
+}
+
+function showDashboard(){
+  $("dashboard").style.display = "block";
+  $("disconnectBtn").style.display = "inline-block";
+  setStatus(true);
+  refresh();
+}
+
+async function refresh(){
+  try {
+    const res = await fetch(`/.netlify/functions/get-links?period=${currentPeriod}`);
+    const data = await res.json();
+    if(data.error){
+      $("linkTableWrap").innerHTML = `<div class="empty">Error loading data — check DATABASE_URL is set in Netlify.</div>`;
+      return;
+    }
+    $("statTotal").textContent = data.total;
+    $("statUnique").textContent = data.unique;
+    $("statRepeated").textContent = data.repeated;
+    currentRows = data.rows;
+    renderTable();
+  } catch (e) {
+    $("linkTableWrap").innerHTML = `<div class="empty">Couldn't reach the server function.</div>`;
+  }
+}
+
+function renderTable(){
+  const wrap = $("linkTableWrap");
+  let rows = currentRows;
+  if(currentFilter === "unique") rows = rows.filter(([,c]) => c === 1);
+  if(currentFilter === "repeated") rows = rows.filter(([,c]) => c > 1);
+
+  if(rows.length === 0){
+    wrap.innerHTML = `<div class="empty">No links for this period yet.</div>`;
+    return;
+  }
+  const body = rows.slice(0,200).map(([url,count]) =>
+    `<tr><td class="url">${url}</td><td class="count">×${count}</td></tr>`
+  ).join("");
+  wrap.innerHTML = `<table><thead><tr><th>Link</th><th style="text-align:right;">Seen</th></tr></thead><tbody>${body}</tbody></table>` +
+    (rows.length > 200 ? `<div class="empty">Showing 200 of ${rows.length} — use Export for the full list.</div>` : "");
+}
+
+function exportList(){
+  let rows = currentRows;
+  if(currentFilter === "unique") rows = rows.filter(([,c]) => c === 1);
+  if(currentFilter === "repeated") rows = rows.filter(([,c]) => c > 1);
+  const text = rows.map(([url,count]) => `${url}\t${count}`).join("\n");
+  const blob = new Blob([text], {type:"text/plain"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `links_${currentPeriod}_${currentFilter}.txt`;
+  a.click();
+}
+
+document.querySelectorAll(".periods button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".periods button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentPeriod = btn.dataset.p;
+    refresh();
+  });
+});
+
+document.querySelectorAll(".filters button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filters button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentFilter = btn.dataset.f;
+    renderTable();
+  });
+});
+
+$("connectBtn").addEventListener("click", connect);
+$("disconnectBtn").addEventListener("click", disconnect);
+$("exportBtn").addEventListener("click", exportList);
+
+// restore saved connection on load
+const saved = loadSaved();
+if(saved){
+  $("botToken").value = saved.botToken;
+  $("channelId").value = saved.channelId;
+  $("disconnectBtn").style.display = "inline-block";
+  showDashboard();
+}
+</script>
+</body>
+</html>
